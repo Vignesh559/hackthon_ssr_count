@@ -190,7 +190,7 @@ class ssrResponseTpl
 		$this->_Ocommon->_Oconnection = $this->_Oconnection;
 		$_AtransactionDetails = $this->_Ocommon->_getTransactionMasterId($this->_IrequestMasterId);
 		$_IgroupId=$this->_Ocommon->_getSeriesGroupIdForPnr($this->_IinputData['pnr'],$this->_IinputData['requestMasterId']);
-		$_ArequestGroupDetails=$this->_Ocommon->_getRequestGroupDetails($_AtransactionDetails['airlinesRequestId'],$_IgroupId['seriesGroupId']);
+		$_ArequestGroupDetails=$this->_Ocommon->_getRequestGroupDetails($_AtransactionDetails['airlinesRequestId'],$_IgroupId['seriesGroupId'],0,0);
 
 		$this->_IgroupStatus = end($_ArequestGroupDetails)['group_status'];
 		# For baggageDisplayStatus 
@@ -325,9 +325,9 @@ class ssrResponseTpl
 		$this->_Ocommon->_Oconnection = $this->_Oconnection;
 		$_AtransactionDetails = $this->_Ocommon->_getTransactionMasterId($this->_IrequestMasterId);
 		$_IgroupId=$this->_Ocommon->_getSeriesGroupIdForPnr($this->_IinputData['pnr'],$this->_IinputData['requestMasterId']);
-		$_ArequestGroupDetails=$this->_Ocommon->_getRequestGroupDetails($_AtransactionDetails['airlinesRequestId'],$_IgroupId['seriesGroupId']);
+		$_ArequestGroupDetails=$this->_Ocommon->_getRequestGroupDetails($_AtransactionDetails['airlinesRequestId'],$_IgroupId['seriesGroupId'],0,0);
 		$this->_IgroupStatus = end($_ArequestGroupDetails)['group_status'];
-		if(in_array($this->_IgroupStatus,explode(",",$CFG['site']['baggageDisplayStatus']['status'])) && !$_BdisplayAncillary)
+		if(in_array($this->_IgroupStatus,explode(",",(string)$CFG['site']['baggageDisplayStatus']['status'])) && !$_BdisplayAncillary)
 		{
 			$this->_OobjResponse->script("errorMessages('Error','Adding ancillaries is not allowed to this request');");
 			return false;
@@ -370,7 +370,7 @@ class ssrResponseTpl
 		 */
 		$_ApnrPaymentDetails=$this->_Ocommon->_getPnrPaymentDetails($this->_IrequestMasterId,$this->_Spnr,"PENDING");
 		/*In order to avoid the alert when the request is pnr submitted*/
-		if($this->_IcurrentStatus==11 || (count($_ApnrPaymentDetails)>0 && $_ApnrPaymentDetails[0]['paymentExpiryStatus']=="Y"  && !in_array($this->_IcurrentStatus,array('9','12','13','14'))))
+		if($this->_IcurrentStatus==11 || (count((array)$_ApnrPaymentDetails)>0 && $_ApnrPaymentDetails[0]['paymentExpiryStatus']=="Y"  && !in_array($this->_IcurrentStatus,array('9','12','13','14'))))
 		{
 			$this->_OobjResponse->script("Ext.Msg.alert('".$this->_Osmarty->getConfigVars('COMMON_REPORT_ERROR')."','".$this->_Osmarty->getConfigVars('COMMON_THIS_PNR_VALIDITY_DATE_IS_EXPIRED')."');");
 			return false;
@@ -450,9 +450,12 @@ class ssrResponseTpl
 			if(!empty($_AssrRemainingAmount))
 				$this->_IremaingAmount+=array_sum($_AssrRemainingAmount);
 		}
-		$this->_IremaingAmount = $this->_Ocommon->_getRoundOffFare($this->_IremaingAmount,'','displayFare');
-		$this->_ItotalPnrAmount = $this->_Ocommon->_getRoundOffFare($this->_ItotalPnrAmount,"","displayFare");
-		$this->_IpnrPaidAmount = $this->_Ocommon->_getRoundOffFare($this->_IpnrPaidAmount,"","displayFare");
+		//disable displayfare
+		$_AuserCurrency = $this->_Ocommon->_getUserCurrency($this->_IrequestMasterId);
+		$this->_ScurrencyCode = $CFG['site']['disableDisplayFare']=='Y' && $_AuserCurrency['user_currency']!='' ? $_AuserCurrency['user_currency'] : "displayFare";
+		$this->_IremaingAmount = $this->_Ocommon->_getRoundOffFare($this->_IremaingAmount,'',$this->_ScurrencyCode);
+		$this->_ItotalPnrAmount = $this->_Ocommon->_getRoundOffFare($this->_ItotalPnrAmount,"",$this->_ScurrencyCode);
+		$this->_IpnrPaidAmount = $this->_Ocommon->_getRoundOffFare($this->_IpnrPaidAmount,"",$this->_ScurrencyCode);
 		
 		$this->_ApnrFareDetails = $this->_Ocommon->_getPnrFareDetails($this->_IrequestMasterId,$this->_Spnr);
 		
@@ -462,7 +465,7 @@ class ssrResponseTpl
 		$_IancillariesAmount = $this->_Ocommon->_getSSRTotalAmount($this->_IrequestMasterId,$this->_Spnr,'','Y');
 		
 		$_IancillariesAmount = ($_IancillariesAmount!="N" ? $_IancillariesAmount : "0");
-		$this->_IancillariesAmount = $this->_Ocommon->_getRoundOffFare($_IancillariesAmount,'','displayFare');
+		$this->_IancillariesAmount = $this->_Ocommon->_getRoundOffFare($_IancillariesAmount,'',$currencyCode);
 	}
 	
 	/*
@@ -520,7 +523,7 @@ class ssrResponseTpl
 					$getData=$this->_Ocommon->_executeQuery($selectSSRDetails);
 					$getSsrStatus= array_column($getData, 'ssr_status');
 					$countSSRArray = array_count_values($getSsrStatus);
-					$errorSSR = ((count($getSsrStatus) != $countSSRArray['ERROR'])?'N':'Y');
+					$errorSSR = ((count((array)$getSsrStatus) != $countSSRArray['ERROR'])?'N':'Y');
 					$_ItotalAmount=0;
 					if($resultSSRDetails->numRows() > 0)
 					{
@@ -549,11 +552,11 @@ class ssrResponseTpl
 					
 					foreach($_AssrCategoryName AS $_SssrCategoryName) {
 						if(isset($tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName]))
-							$tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName] = $this->_SuserCurrency." ".$this->_Ocommon->_getRoundOffFare($tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName],'','displayFare');
+						$tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName] = $this->_SuserCurrency." ".$this->_Ocommon->_getRoundOffFare($tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName],'',$this->_ScurrencyCode);
 						else
 							$tempSSRFareArray[$ssrMasterArray['ssr_master_id']][$_SssrCategoryName] = "-";
 					}
-					$ssrMasterArray['ssr_amount'] = $this->_Ocommon->_getRoundOffFare($ssrMasterArray['ssr_amount'],'','displayFare');
+					$ssrMasterArray['ssr_amount'] = $this->_Ocommon->_getRoundOffFare($ssrMasterArray['ssr_amount'],'',$this->_ScurrencyCode);
 					if($ssrMasterArray['status']=='NEW' )
 					{
 						$ssrMasterArray['status'] = 'INCOMPLETE';
@@ -741,7 +744,7 @@ class ssrResponseTpl
 					$rowSelectRequestDetails['tripType']="M";
 				$rowSelectRequestDetails['tripCategory'] = $this->_Ocommon->_isDomestic($rowSelectRequestDetails['requestMasterId']);
 				//To skip ssr policy
-				if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]["status"] == 'Y')
+				if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]["status"] == 'Y')
 				{
 					$this->_getDirectcodeFromService($rowSelectRequestDetails);
 				}
@@ -866,7 +869,7 @@ class ssrResponseTpl
 							$_AfinalStringExecute[]=$_SstringToExecute;
 
 						
-						if(count($_AfinalStringExecute) > 0)
+						if(count((array)$_AfinalStringExecute) > 0)
 							$_SfinalExecuteString=implode(" && ",$_AfinalStringExecute);
                     	$_IresultValue = 0;
 						$_SresultStringToEval="IF( ".$_SfinalExecuteString." ){".'$_IresultValue'."=1;}";
@@ -880,15 +883,15 @@ class ssrResponseTpl
 				}
 			}
 		}
-		if(count($policyMasterValueArray) > 0)
+		if(count((array)$policyMasterValueArray) > 0)
 		{
 			$finalInput=array("inputArray"=>$policyMasterValueArray,"firstFieldName"=>"priority","firstFieldOrder"=>"ASC","secondFieldName"=>"create_date","secondFieldOrder"=>"ASC");
 			$finalArray=$this->_Ocommon->_multipleSortFunction($finalInput);
 			$fetchRequestFieldPolicyArray[]=$finalArray[0];
-			if(count($fetchRequestFieldPolicyArray) > 0)
+			if(count((array)$fetchRequestFieldPolicyArray) > 0)
 			{
 				$returnFieldArray=$this->_getSSRMatrix($fetchRequestFieldPolicyArray);
-				if(count($returnFieldArray) > 0)
+				if(count((array)$returnFieldArray) > 0)
 				{
 					$returnArray=array();
 					$returnArray=$returnFieldArray;
@@ -906,7 +909,7 @@ class ssrResponseTpl
 	{
 		global $CFG;
 		$ssrArray=array();
-		if(count($givenRequestPolicyArray)>0 && !empty($givenRequestPolicyArray))
+		if(count((array)$givenRequestPolicyArray)>0 && !empty($givenRequestPolicyArray))
 		{
 			$this->_ArequestCriteriaDetails=array();
 			
@@ -976,7 +979,7 @@ class ssrResponseTpl
 						{
 							if(strtoupper($value['criteria_value']) != 'N')
 							{
-								if($CFG["ssr"]["skipSSRPolicy"]['applyUniqueSsrCode']=='Y')
+								if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['applyUniqueSsrCode']=='Y')
 								{
 									$ssrCode=$row['ssr_code'].'_'.str_replace(' ','_',strtoupper($row['ssr_description']));
 									$ssrArray[$ssrCode]=$row;
@@ -1042,7 +1045,7 @@ class ssrResponseTpl
 		$this->_AfinalSSRList = array();
 		$_AserviceAvailableSSR = array();
 		$_SondSSRstatus='N';
-		if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
+		if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
 			$_SondSSRstatus='Y';
 		#$this->_AssrListPolicyValues = array();
 		if(!empty($this->_AserviceSSRDetails) && isset($this->_AserviceSSRDetails[0]))
@@ -1136,7 +1139,7 @@ class ssrResponseTpl
 					foreach($_AserviceSSRDetails AS $_IserviceKey => &$_IserviceSSRValue)
 					{
 						$_SssrCode = $_IserviceSSRValue['SSRCode'];
-						if(isset($CFG["ssr"]["skipSSRPolicy"]) && ($CFG["ssr"]["skipSSRPolicy"]['status']=='Y' || $CFG["ssr"]["skipSSRPolicy"]['applyUniqueSsrCode']=='Y'))
+						if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && ($CFG["ssr"]["skipSSRPolicy"]['status']=='Y' || $CFG["ssr"]["skipSSRPolicy"]['applyUniqueSsrCode']=='Y'))
 							$_SssrCode = $_IserviceSSRValue['SSRCode'].'_'.str_replace(' ','_', strtoupper($_IserviceSSRValue['SSRName']));
 						if(in_array($_SssrCode,$_AavailableSSR))
 						{
@@ -1144,9 +1147,9 @@ class ssrResponseTpl
 							{
 								if($_IssrListPolicyKey==$_SssrCode)
 								{
-									$_IssrListPolicyValue['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($_IserviceSSRValue['totalPrice']-$_IserviceSSRValue['basePrice']));
-									$_IssrListPolicyValue['ssrAmount'] = $this->_Ocommon->_getRoundOffFare($_IserviceSSRValue['totalPrice']);
-									$_IssrListPolicyValue['ssrBaseFare'] = $this->_Ocommon->_getRoundOffFare($_IserviceSSRValue['basePrice']);
+									$_IssrListPolicyValue['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($_IserviceSSRValue['totalPrice']-$_IserviceSSRValue['basePrice']),'',$this->_ScurrencyCode);
+									$_IssrListPolicyValue['ssrAmount'] = $this->_Ocommon->_getRoundOffFare($_IserviceSSRValue['totalPrice'],'',$this->_ScurrencyCode);
+									$_IssrListPolicyValue['ssrBaseFare'] = $this->_Ocommon->_getRoundOffFare($_IserviceSSRValue['basePrice'],'',$this->_ScurrencyCode);
 
 									// Display amount with comma format
 									$_IssrListPolicyValue['ssrTaxDisplay'] = $this->_Ocommon->_getRoundOffFare(($_IserviceSSRValue['totalPrice']-$_IserviceSSRValue['basePrice']),'','displayFare');
@@ -1295,8 +1298,10 @@ class ssrResponseTpl
 		//$this->_OssrPaxDetails->_Sstatus = 'Y';
 		$this->_OssrPaxDetails->_selectSsrPaxDetails();
 		$_IssrPaxCount = $this->_OssrPaxDetails->_IcountLoop;
+		//passenger details table count
+		$_IPassengerDetailsTableCount = count((array)$this->_ApassengerDetails);
 		//Pax count in the PNR
-		$_IpnrPaxCount = count($this->_AfinalPassengerSSRList);
+		$_IpnrPaxCount = count((array)$this->_AfinalPassengerSSRList);
 		//Looping all the passenger in the PNR
 		for($paxToInsert=0;$paxToInsert<$_IpnrPaxCount;$paxToInsert++){
 			//Inserting the pax details in the table if previously not insert
@@ -1350,7 +1355,7 @@ class ssrResponseTpl
 			}
 		}
 		//while passenger id inserted to 0 in ssr_pax_details ,we will delete the entire row of against pnrBlockingId.
-		if(isset($_pnrBlockingInsertedZero) && $_pnrBlockingInsertedZero =='Y')
+		if(isset($_pnrBlockingInsertedZero) && $_pnrBlockingInsertedZero =='Y' && $_IPassengerDetailsTableCount==$_IpnrPaxCount)
 		{
 			$sqlSsrPaxDetailsDelete = "DELETE FROM ".$CFG['db']['tbl']['ssr_pax_details']."  WHERE pnr_blocking_id IN(".$this->_SpnrBlockingIdInString.")";
 			fileWrite($sqlSsrPaxDetailsDelete,"ssrPaxDetailsDelete","a+");
@@ -1426,7 +1431,7 @@ class ssrResponseTpl
 		$_AgetSSRDetailsForPNR = $this->_OairlineService->_getSSRDetailsForPNR();
 		$paxIdArray=array();
 		$_SondSSRstatus='N';
-		if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
+		if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
 			$_SondSSRstatus='Y';
 		if($_AgetSSRDetailsForPNR['responseCode']==0)
 		{
@@ -1438,7 +1443,7 @@ class ssrResponseTpl
 				$this->_ApassengerDetails = $this->_OpassengerDetails->_selectPassengerDetails();
 				
 				$_ApassengerSSR = $_AgetSSRDetailsForPNR['response']['paxSSR'];
-				$_IpaxSSRCount = count($_ApassengerSSR);
+				$_IpaxSSRCount = count((array)$_ApassengerSSR);
 				
 				/* Preparing the passenger details in the array if name update done for the passenger
 				 * Set the first name and last name for the passenger from DB if name update done
@@ -1571,9 +1576,9 @@ class ssrResponseTpl
 														$this->_AfinalSSRList[$_SreferenceKey][strtolower($_AselectedSSRDetails['ssr_category_name'])][$availableSSRValue['SSRCode']]['displayStatus'] = 'Y';
 													}
 													// different fare from service for meals before pnr blocking.so,we taking ssr amount from availability service.
-													$_AselectedSSRDetails['ssrAmount'] =  $this->_Ocommon->_getRoundOffFare($availableSSRValue['totalPrice'],'','displayFare');
+													$_AselectedSSRDetails['ssrAmount'] =  $this->_Ocommon->_getRoundOffFare($availableSSRValue['totalPrice'],'',$this->_ScurrencyCode);
 													$_AselectedSSRDetails['ssrBaseFare'] = $availableSSRValue['basePrice'];
-													$_AselectedSSRDetails['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($availableSSRValue['totalPrice']-$availableSSRValue['basePrice']),'','displayFare');
+													$_AselectedSSRDetails['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($availableSSRValue['totalPrice']-$availableSSRValue['basePrice']),'',$this->_ScurrencyCode);
 													if(isset($CFG["ssr"]["instantPayment"]) && $CFG["ssr"]["instantPayment"]["status"] =="Y")
 													{
 														unset($this->_AfinalSSRList[$_SreferenceKey][strtolower($_AselectedSSRDetails['ssr_category_name'])][$availableSSRValue['SSRCode']]['ssrId']);
@@ -1596,7 +1601,7 @@ class ssrResponseTpl
 													$_AselectedSSRDetails['ssrAmount'] = $availableSSRValue['totalPrice'];
 													$_AselectedSSRDetails['ssrBaseFare'] = $availableSSRValue['basePrice'];
 													$_AselectedSSRDetails['ssrId'] = $availableSSRValue['id'];
-													$_AselectedSSRDetails['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($availableSSRValue['totalPrice']-$availableSSRValue['basePrice']),'','displayFare');
+													$_AselectedSSRDetails['ssrTax'] = $this->_Ocommon->_getRoundOffFare(($availableSSRValue['totalPrice']-$availableSSRValue['basePrice']),'',$this->_ScurrencyCode);
 													$this->_AfinalSSRList[$_SreferenceKey][strtolower($_AtempSSRDetails[$availableSSRValue['SSRCode']]['ssr_category_name'])][$availableSSRValue['SSRCode']] = $_AselectedSSRDetails;
 													$this->_AfinalSSRList[$_SreferenceKey][strtolower($_AtempSSRDetails[$availableSSRValue['SSRCode']]['ssr_category_name'])][$availableSSRValue['SSRCode']]['disabled'] = 'Y';
 												}
@@ -1614,7 +1619,7 @@ class ssrResponseTpl
 												if($_AselectedSSRDetails['ssr_category_name'] !='')
 													$this->_AfinalPassengerSSRList[$paxSSRIndex]['ssrExists'] = "Y";
 												//Based on this, select ssr icon will display in the passenger list part
-												if(!in_array(strtolower($_AselectedSSRDetails['ssr_category_name']),$this->_AfinalPassengerSSRList[$paxSSRIndex]['ssrIcons']))
+												if(!in_array(strtolower($_AselectedSSRDetails['ssr_category_name']),(array)$this->_AfinalPassengerSSRList[$paxSSRIndex]['ssrIcons']))
 													$this->_AfinalPassengerSSRList[$paxSSRIndex]['ssrIcons'][] = strtolower($_AselectedSSRDetails['ssr_category_name']);
 												if($_SondSSRstatus=='Y' && $_IapprovedFlightId!=0 && $_IapprovedFlightId==$flightValue['requestApprovedFlightId'])
 												{
@@ -1988,7 +1993,11 @@ class ssrResponseTpl
 			else if(!isset($this->_IinputData['instantPayment']))
 			{
 				if(in_array($_SESSION['groupRM']['groupId'],$CFG['default']['airlinesGroupId']))
-					$this->_OobjResponse->script("commonObj.closeGrmPopup(true);commonObj.showSuccessMessage(globalLanguageVar['VALIDATION_POPUPSSRDETAILS_ADD_ANCILLARIES_SUCCESS_MSG']);wrapperScript('viewPaymentRequest','');");  
+				$this->_OobjResponse->script("
+									var displayField = {'getBooking': 'N','paxTimeLine': 'N','passengerUpload': 'N','paidPercentage': 'N'};
+									commonObj.closeGrmPopup(true);
+									commonObj.showSuccessMessage(globalLanguageVar['VALIDATION_POPUPSSRDETAILS_ADD_ANCILLARIES_SUCCESS_MSG']);
+									wrapperScript('paymentRequest', '');wrapperScript('viewPaymentRequest', displayField);");
 				else
 					$this->_OobjResponse->script("commonObj.closeGrmPopup(true);commonObj.showSuccessMessage(globalLanguageVar['VALIDATION_POPUPSSRDETAILS_ADD_ANCILLARIES_SUCCESS_MSG']);wrapperScript('viewRequestSSR','');");
 			}
@@ -2108,7 +2117,7 @@ class ssrResponseTpl
 				// Get Infant value key
 				$_AvalueInfant = array_keys($_ApassengerType,'Infant');
 				// Count the infant value key for check with submitted infants to take decision if allow to name update ot not
-				$_IcountOfKeyInfant = count($_AvalueInfant);
+				$_IcountOfKeyInfant = count((array)$_AvalueInfant);
 				
 				if($_IssrInfantCount > 0  && $_IcountOfKeyInfant!=$_IssrInfantCount)
 				{
@@ -2280,7 +2289,7 @@ class ssrResponseTpl
 					if(!isset($_AtempFlightDetails[$flightNumber.$_IcheckFlightId])) {
 						$_AtempFlightDetails[$flightNumber.$_IcheckFlightId] = array();
 						$this->_AviaFlightStatus[$_AflightVal['viaFlightId']] = 'Y';
-						if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['mergingFlights']=='Y')
+						if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['mergingFlights']=='Y')
 						{
 							if($_AapprovedFlightId==$_AflightVal['requestApprovedFlightId'])
 								$this->_AviaFlightStatus[$_AflightVal['viaFlightId']] = 'N';
@@ -2297,7 +2306,7 @@ class ssrResponseTpl
 		$this->_AmergedViaFlightDetails = array();
 		foreach($_AtempFlightDetails as $viaFltNo=>$viaFltDetails)
 		{
-			$viaFlightCount = count($viaFltDetails);
+			$viaFlightCount = count((array)$viaFltDetails);
 			if($viaFlightCount > 1)
 			{
 				$viaFlightCount = $viaFlightCount-1;
@@ -2320,6 +2329,8 @@ class ssrResponseTpl
 		$this->_OdisplaySectorDetailsTpl->_IrequestMasterId = $this->_IinputData['requestMasterId'];
 		$this->_OdisplaySectorDetailsTpl->_SpnrView = 'N';
 		$this->_OdisplaySectorDetailsTpl->_SssrTag = 'Y';
+		if(!empty($this->_Osmarty->getConfigVars('ADD_ANCILLARY_DISCLIMER')))
+			$this->_OdisplaySectorDetailsTpl->_SshowDisclaimerContent = 'Y';
 		$this->_OdisplaySectorDetailsTpl->_getDisplaySectorDetails();
 	}
 	
@@ -2369,7 +2380,11 @@ class ssrResponseTpl
 		if($this->_IinputData['ssrTotalAmount'] != 0 || !empty($this->_IinputData['CCPayableAmount']))
 		{
 			$_ApnrDetails = array();
-			$_ApnrDetails = json_decode($this->_IinputData['selectedPNRDetails'],1);				
+			if(isset($this->_IinputData['selectedPNRDetails']) && is_string($this->_IinputData['selectedPNRDetails']))
+				$_ApnrDetails = json_decode($this->_IinputData['selectedPNRDetails'],1);		
+			else
+			$_ApnrDetails = $this->_IinputData['selectedPNRDetails'];
+		
 			$_ApaymentDetails['pnrPaymentId'] = $_ApnrDetails[0]['pnrPaymentId'];			
 			$_ApaymentDetails['paymentMasterId'] = $_ApnrDetails[0]['paymentMasterId'];			
 			// Getting the user details and currency code 
@@ -2500,7 +2515,8 @@ class ssrResponseTpl
 					$this->_OairlineService->_AformValues=$_AformValues;
 					$_AupdateSSRResponse = $this->_OairlineService->_updateSSR();
 								
-				}			
+				}		
+
 				if(isset($_AupdateSSRResponse['responseCode']) && $_AupdateSSRResponse['responseCode']==0)
 				{	
 					$_SsuccessFlag = 'Y';
@@ -2532,7 +2548,10 @@ class ssrResponseTpl
 						}
 						else
 							$this->_OobjResponse->script("hideLoading();Ext.getCmp('airlinePaymentWindow').close();errorMessages('','".$this->_Osmarty->getConfigVars('COMMON_SERVICE_PROBLEM_TRY_AGAIN_LATER')."');wrapperScript('ticketRequestQueryBox','');");
-						return false;
+						if ($this->_IseatWalletPayment =='Y')
+							return $this->_OobjResponse;
+						else
+							return false;
 					}
 					else
 					{
@@ -2542,18 +2561,22 @@ class ssrResponseTpl
 						}
 						else
 							$this->_OobjResponse->script("hideLoadingPopup();errorMessages('','".$this->_Osmarty->getConfigVars('COMMON_SERVICE_PROBLEM_TRY_AGAIN_LATER')."');wrapperScript('viewRequestSSR','');");
-						return false;
+						if ($this->_IseatWalletPayment =='Y')
+							return $this->_OobjResponse;
+						else
+							return false;
 					}
 					
 				}
 			}
 		}
-
 		if($_SsuccessFlag == 'Y')
 		{
 			#Call assign seats service and Return to submitTigerPaymentRequestV1 file to use Wallet Input 
-			if ($this->_IseatWalletPayment =='Y')
+			if ($this->_IseatWalletPayment =='Y'){
+				$this->_IseatResponse =$_AupdateSSRResponse;
 				return $_AupdateSSRResponse;
+			}
 					
 			//Proceed to check the seat for each passenger and update the seat and payment details for the PNR
 			$_AformFlightSegment = array_unique($_AformFlightSegment, SORT_REGULAR);
@@ -2658,8 +2681,9 @@ class ssrResponseTpl
 				{					
 					foreach($_AssrArray AS $ssrCategory => $selectSSRArray)
 					{
-						$_IssrPaxIds = $selectSSRArray['ssrPaxId'];
-						if(is_array($selectSSRArray['newSeat']) && !empty($selectSSRArray['newSeat']))
+
+						$_IssrPaxIds = is_array($selectSSRArray) ? $selectSSRArray['ssrPaxId'] : NULL;
+						if(isset($selectSSRArray['newSeat']) && is_array($selectSSRArray['newSeat']) && !empty($selectSSRArray['newSeat']))
 						{
 							$this->_OssrDetails->__construct();
 							$this->_OssrDetails->_IssrMasterId = $this->_IssrMasterId;
@@ -3352,6 +3376,9 @@ class ssrResponseTpl
 					$this->_OobjResponse->call("commonObj.showErrorMessage",$_AupdateSSRResponse['response']);
 				else
 					$this->_OobjResponse->script("errorMessages('','".$this->_Osmarty->getConfigVars('COMMON_SERVICE_PROBLEM_TRY_AGAIN_LATER')."');");
+				if ($this->_IssrWalletPayment =='Y'){
+					$this->_AupdateSSRResponse=$_AupdateSSRResponse;
+				}
 				return false;
 			}
 		}
@@ -3654,13 +3681,14 @@ class ssrResponseTpl
 		if(!isset($_ARequestDetails[0]))
 			$_AflightRequestDetails[0]=$_ARequestDetails;
 		$_SondSSRstatus='N';
-		if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
+		if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['ONDLevelSSR']=='Y')
 			$_SondSSRstatus='Y';
 		/* Based on config shows zero fare ssr */
 		$_SzeroFareAncilary='N';
-		if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['zeroFareAncilary']=='Y')
+		if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]['zeroFareAncilary']=='Y')
 			$_SzeroFareAncilary='Y';
-		$_AdefaultSSRCategory = $CFG["ssr"]["skipSSRPolicy"]["category"];
+		if(isset($CFG["ssr"]["skipSSRPolicy"]["category"]) && is_array($CFG["ssr"]["skipSSRPolicy"]["category"]))
+			$_AdefaultSSRCategory = $CFG["ssr"]["skipSSRPolicy"]["category"];
 		$this->_Acategory = array("meals","baggage","others");
 		if($_AflightRequestDetails[0]['stops']>0 && empty($_AmatrixValue))
 		{
@@ -3691,7 +3719,7 @@ class ssrResponseTpl
 						if(($tripValue['departureDate'] == $viaValue['departureDate']) && ($tripValue['source'] == $viaValue['origin']) && ($tripValue['destination'] == $viaValue['destination']) && ($tripValue['flightNumber'] == $viaValue['flightNumber']))
 						{
 							if(!isset($_AssrCodeDetails[$_Sindex]))
-								$_AssrCodeDetails[$_Sindex] = array_unique(array_column($viaValue['SSRDetails'],'SSRCode'));
+								$_AssrCodeDetails[$_Sindex] = array_unique(array_column((array)$viaValue['SSRDetails'],'SSRCode'));
 							/* check ond SSR available and take OND SSR for the flight*/
 							$_AssrDetails=$viaValue['SSRDetails'];
 							if(!empty($this->_AondSsrDetails) && $_SondSSRstatus=='Y')
@@ -3713,7 +3741,7 @@ class ssrResponseTpl
 								$_SssrCode = $ssrValue['SSRCode'];
 								if($_SssrCode=="INFT" && in_array('INFB',$_AssrCodeDetails[$_Sindex]) && !in_array($_SssrCode,array_keys($_AmatrixValue)))
 									$_SinfantFlag = 'Y';
-								if(isset($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]["status"] == 'N' && (isset($_AssrCategoryDetails[$ssrValue['SSRCode']]) || $_SinfantFlag=='Y'))
+								if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && $CFG["ssr"]["skipSSRPolicy"]["status"] == 'N' && (isset($_AssrCategoryDetails[$ssrValue['SSRCode']]) || $_SinfantFlag=='Y'))
 								{
 									if(!empty($_AmatrixValue) && $_SinfantFlag=='N')
 									{
@@ -3769,7 +3797,7 @@ class ssrResponseTpl
 											$this->_AssrListPolicyValues[$_Sindex][$_SssrCode]['infantStatus'] = 'Y';
 									}
 								}
-								if(isset($CFG["ssr"]["skipSSRPolicy"]) && ($CFG["ssr"]["skipSSRPolicy"]["status"] == 'Y' || $CFG["ssr"]["skipSSRPolicy"]["applyUniqueSsrCode"] =='Y'))
+								if(isset($CFG["ssr"]["skipSSRPolicy"]) && is_array($CFG["ssr"]["skipSSRPolicy"]) && ($CFG["ssr"]["skipSSRPolicy"]["status"] == 'Y' || $CFG["ssr"]["skipSSRPolicy"]["applyUniqueSsrCode"] =='Y'))
 								{
 									$_SssrCode = $ssrValue['SSRCode'].'_'.str_replace(' ', '_', strtoupper($ssrValue['SSRName']));
 
@@ -3838,6 +3866,7 @@ class ssrResponseTpl
 		fileRequire('classes/class.contractManager.php');
 		$_OcontractManager = new contractManager();
 		$_OcontractManager->_Oconnection = $this->_Oconnection;
+		$_OcontractManager->_Osmarty=$this->_Osmarty;
 		$_AcontractDetails = $_OcontractManager->_getSpecifiedValues($_IrequestMasterId,'ssr_validation_details',$_ArequestDetails[0]['series_group_id']);
 		$_AfareValidity = $_OcontractManager->_getFareValidity();
 		$_Avalidity = array_column($_AfareValidity,'fare_validity_values','fare_validity_type_id');
@@ -3970,6 +3999,7 @@ class ssrResponseTpl
 	*@Arguments    :$_AserviceSSRDetails-ssr availablity list(Array)
 	*@Description  :(This function will check each leg destination country code with country code present in the config $CFG["nameUpdate"]["addSSRInNameUpdate"].if the country code matches means,it will check the triptype(International only) and add the ssr informations present in the same config).
 	*@Created date :19-06-2020
+	*@Modify       :Ajith kumar P
 	*@Return       :Array
 	*/
 	function _prepareSSRListForUpdateNames($_AserviceSSRDetails)
@@ -3980,6 +4010,7 @@ class ssrResponseTpl
 		$_ASSRForUpdateNames=array();
 		foreach($_AserviceSSRDetails as $_IondIndex => $_AondValue)
 		{
+			$_AsameCountrySSR=array();
 			foreach ($_AondValue["viaFlightDetails"] as $_IlegIndex => $_AlegValue) 
 			{
 				$_SdestCountry=$this->_Ocommon->_getAirportDetails($_AlegValue["destination"]);
@@ -3990,12 +4021,25 @@ class ssrResponseTpl
 					$_Asector=array($_AlegValue["origin"],$_AlegValue["destination"]);
 					//travel type (International-0 or domestic-1)
 					$_ItravelType=$this->_Ocommon->_checkSectorSameCountry($_Asector);
+
+					//DNI tax samecountry add process (only connecting flight)
+                    $_BaddDniSameCountry=($_ItravelType===1) && (in_array('DNI',$CFG["nameUpdate"]["addSSRInUpdateNames"]["SameCountryAddSSR"])) &&   !empty($_AsameCountrySSR) ? true : false ;
+
 					//apply only for international
-					if($_ItravelType===0)
+					if($_ItravelType===0 ||  $_BaddDniSameCountry)
 					{
 						$_AssrDetails=array();
 						//looping the ssr list to add
-						foreach ($CFG["nameUpdate"]["addSSRInUpdateNames"]["ssrInfo"]["ssrCode"] as $_SssrCode) 
+						$_AnewSSRArray=$CFG["nameUpdate"]["addSSRInUpdateNames"]["ssrInfo"]["ssrCode"];
+
+						#Adding UKIN AND AY SSR details to flight details
+                        if(!$_BaddDniSameCountry)
+						{
+							array_push($_AnewSSRArray,"UKIN");
+							array_push($_AnewSSRArray,"AY");
+						}
+
+						foreach ($_AnewSSRArray as $_SssrCode) 
 						{
 							//searching the ssr code is available for the current flight segment 
 							$_IssrIndex=array_search($_SssrCode,array_column($_AlegValue["SSRDetails"],"SSRCode"));
@@ -4009,6 +4053,9 @@ class ssrResponseTpl
 						}
 						//store the filtered SSR details 
 						$_AserviceSSRDetails[$_IondIndex]["viaFlightDetails"][$_IlegIndex]["SSRDetails"]=$_AssrDetails;
+
+						#Samecountry ssr array value check 
+                        $_AsameCountrySSR[]=$_AssrDetails;
 					}
 					else
 						$_AserviceSSRDetails[$_IondIndex]["viaFlightDetails"][$_IlegIndex]["SSRDetails"]=array();
