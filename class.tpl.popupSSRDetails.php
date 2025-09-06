@@ -61,6 +61,7 @@ class ssrResponseTpl
 	var $_SpnrBlockingIdInString;
 	var $_OssrPaxGroup;
 	var $_SapiCall; 
+	var $_AnestServiceSSRValue ;
 	function __construct()
 	{
 		$this->_Osmarty = '';
@@ -112,6 +113,7 @@ class ssrResponseTpl
 		$this->_AssrValidityDetails = array();
 		$this->_OfetchPolicyDetails = new fetchPolicyDetails();
 		$this->_pnrPassengerIDZero = 'N';
+		$this->_AnestServiceSSRValue= array();
 	}
 	
 	function _getSSRResponse()
@@ -288,6 +290,9 @@ class ssrResponseTpl
 			$_AcancelSSR['allowCancelSSR'] = 'Y';
 			$_AcancelSSR['disableCancelOption'] = $this->_AdisableCancelOption;
 		}
+        if(!empty($this->_AnestServiceSSRValue))
+		$selectedSSRCount  = $this->_preSelectedSSRCount($this->_IrequestMasterId,$this->_AnestServiceSSRValue);
+		$this->_Osmarty->assign("selectedSSRCount",$selectedSSRCount);
 		$this->_Osmarty->assign("mealSSR",$_AmealSSR);
 		$this->_Osmarty->assign("allowCancelSSR",$cancelSSR);
 		$this->_Osmarty->assign("SSRList",$this->_AfinalSSRList);
@@ -307,7 +312,7 @@ class ssrResponseTpl
 		}
 		$this->_OobjResponse->script("ssrProcessObj.cancelSSRArray = [];");
 		$this->_OobjResponse->script("ssrProcessObj.cancelSSR = ".json_encode($_AcancelSSR).";");
-		
+
 	}
 	
 	function _checkValidationForSSR()
@@ -1162,6 +1167,15 @@ class ssrResponseTpl
 									$_IssrListPolicyValue['additional_info']['SSRVendor'] = $_IserviceSSRValue['SSRVendor'];
 									$_IssrListPolicyValue['additional_info']['SSRName'] = $_IserviceSSRValue['SSRName'];
 									$_IssrListPolicyValue['additional_info']['SSRType'] = $_IserviceSSRValue['SSRType'];
+									#Get SSR availbity Count 
+									if(isset($_IserviceSSRValue['Nest']) && !empty($_IserviceSSRValue['Nest']) )
+									{
+										$_IssrListPolicyValue['Available']=$_IserviceSSRValue['Available'];
+										$_IssrListPolicyValue['Nest'][$_IserviceSSRValue['Nest']]=$_IserviceSSRValue['Available'];
+										$this->_AnestServiceSSRValue['Nest'][$_IserviceSSRValue['Nest']]['ssrCode'][]=$_IserviceSSRValue['SSRCode'];
+
+									}
+									
 									/* sent as array in update ssr service issue fixing*/
 									if($_IserviceSSRValue['AddtionalInfo']['SegmentIndicator']=="")
 										$_IssrListPolicyValue['additional_info']['SegmentIndicator']="";
@@ -1274,6 +1288,7 @@ class ssrResponseTpl
 			}
 			unset($_AtempSSRList);
 		}
+		fileWrite(print_r($this->_AfinalSSRList,1),'SSR___final','w+');
 	}
 	
 	/*
@@ -4322,5 +4337,40 @@ class ssrResponseTpl
 		}
 		return $this->_AssrValidityDetails;
 	}
+	function _preSelectedSSRCount($_IrequestMasterId,$_AselectedSSRlist)
+	{   
+		global $CFG;
+		$totalCount =0;
+		foreach ($_AselectedSSRlist['Nest'] as $key => $value) 
+		{	
+			if(isset($value['ssrCode'])) 
+			{
+				foreach($value['ssrCode'] as $index => $ssrCode) 
+				{
+					$sqlSSRselectedCount="SELECT
+					                          count(*) as totalCount
+											   FROM
+													".$CFG['db']['tbl']['ssr_details']."
+											   WHERE
+													ssr_master_id=(SELECT ssr_master_id FROM ".$CFG['db']['tbl']['ssr_master']." sm WHERE sm.request_master_id = ".$this->_IrequestMasterId.") 
+													AND ssr_status = 'COMPLETED' AND ssr_code = "."'".$ssrCode."'";
+					if(DB::isError($result=$this->_Oconnection->query($sqlSSRselectedCount)))
+					{
+						fileWrite($sqlSSRselectedCount,'SqlError','a+');
+						return false;
+					}
+					if($result->numRows()>0)
+					{
+						while($row= $result->fetchRow(DB_FETCHMODE_ASSOC))
+							$totalCount += $row['totalCount'];
+					}
+			}
+			}
+		}
+		return $totalCount; 
+	 
+	}
+	
 }
+    
 ?>
