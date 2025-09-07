@@ -61,6 +61,8 @@ class ssrResponseTpl
 	var $_SpnrBlockingIdInString;
 	var $_OssrPaxGroup;
 	var $_SapiCall; 
+	var $_AnestServiceSSRValue; // Add property to store SSR value by Nest
+
 	function __construct()
 	{
 		$this->_Osmarty = '';
@@ -112,6 +114,7 @@ class ssrResponseTpl
 		$this->_AssrValidityDetails = array();
 		$this->_OfetchPolicyDetails = new fetchPolicyDetails();
 		$this->_pnrPassengerIDZero = 'N';
+		$this->_AnestServiceSSRValue = array(); // Initialize the new property
 	}
 	
 	function _getSSRResponse()
@@ -158,12 +161,18 @@ class ssrResponseTpl
 		 * Or else prepare system SSR list based on departure date from avaiService SSR
 		 */
 		$this->_prepareFinalSSRList();
-		
+
 		/*
 		 * Prepare an array for selected SSR for each passenger
 		 */
 		$this->_getSSRListForPassenger();
-		
+
+		// --- SSR Count Display Feature ---
+		if (!empty($this->_AnestServiceSSRValue)) {
+			$selectedSSRCount = $this->_preSelectedSSRCount($this->_IrequestMasterId, $this->_AnestServiceSSRValue);
+			$this->_Osmarty->assign("selectedSSRCount", $selectedSSRCount);
+		}
+
 		/*
 		 * Set the passenger details based on the selected pnr for first time
 		 */
@@ -1260,6 +1269,13 @@ class ssrResponseTpl
 				{
 					$this->_AfinalSSRList[$_Ikey][strtolower($subValue['ssr_category_name'])][$subValue['ssr_code']] = $subValue;
 					$_AtempSSRList[$_Ikey]['category'] = $this->_AfinalSSRList[$_Ikey];
+
+					// --- SSR Count Display Feature: Collect SSR codes by Nest ---
+					if (isset($subValue['additional_info']['Nest'])) {
+						$nest = $subValue['additional_info']['Nest'];
+						$ssrCode = $subValue['ssr_code'];
+						$this->_AnestServiceSSRValue[$nest][] = $ssrCode;
+					}
 				}
 			}
 			/*Anboli M 08-04-2020 - In order to ordering the SSR to show the ancillaries orderly in review panel*/
@@ -1277,6 +1293,30 @@ class ssrResponseTpl
 			}
 			unset($_AtempSSRList);
 		}
+	}
+
+	// --- SSR Count Calculation Method ---
+	function _preSelectedSSRCount($requestMasterId, $selectedSSRlist)
+	{
+		global $CFG;
+		$count = 0;
+		if (empty($selectedSSRlist)) return $count;
+
+		foreach ($selectedSSRlist as $nest => $ssrCodes) {
+			foreach ($ssrCodes as $ssrCode) {
+				$sql = "SELECT COUNT(*) as cnt FROM ".$CFG['db']['tbl']['ssr_details']." sd
+						INNER JOIN ".$CFG['db']['tbl']['ssr_master']." sm ON sd.ssr_master_id = sm.ssr_master_id
+						WHERE sm.request_master_id = ".intval($requestMasterId)."
+						AND sd.ssr_code = '".$this->_Oconnection->escapeSimple($ssrCode)."'
+						AND sd.ssr_status = 'COMPLETED'";
+				$result = $this->_Oconnection->query($sql);
+				if (!DB::isError($result) && $result->numRows() > 0) {
+					$row = $result->fetchRow(DB_FETCHMODE_ASSOC);
+					$count += intval($row['cnt']);
+				}
+			}
+		}
+		return $count;
 	}
 	
 	/*
@@ -1787,7 +1827,7 @@ class ssrResponseTpl
 										$this->_OssrDetails->__construct();
 										$this->_OssrDetails->_IssrMasterId = $this->_IssrMasterId;
 										$this->_OssrDetails->_IssrPaxId = $_IssrPaxId;
-										$this->_OssrDetails->_IssrCategoryId = $this->_AssrCategoryId[$ssrCategory];
+											$this->_OssrDetails->_IssrCategoryId = $this->_AssrCategoryId[$ssrCategory];
 										$this->_OssrDetails->_SssrCode = $ssrDetails['ssr_code'];
 										$this->_OssrDetails->_IssrBaseFare = $ssrDetails['ssrBaseFare'];
 										$this->_OssrDetails->_IssrTax = $ssrDetails['ssrTax'];
